@@ -13,6 +13,21 @@
 
 ---
 
+## Table of contents
+
+1. [Overview](#-overview)
+2. [Features](#-features)
+3. [Available tools](#-available-tools)
+4. [How it works](#️-how-it-works)
+5. [Project structure](#-project-structure)
+6. [Getting started](#-getting-started)
+7. [Usage](#-usage)
+8. [Testing](#-testing)
+9. [Security notes](#-security-notes)
+10. [Roadmap](#️-roadmap)
+
+---
+
 ## 📖 Overview
 
 **First AI Agent** is a lightweight, from-scratch implementation of an **agentic loop**. You give it a task in plain English, for example *"fix the bug in the calculator"*, and the agent decides which tools to call, looks at the results, and keeps going until it has a final answer.
@@ -41,30 +56,37 @@ The agent works inside a **sandboxed working directory** (`./calculator`), a sma
 
 ## 🏗️ How It Works
 
-```text
-            ┌──────────────────────┐
-  prompt ─▶ │   main.py            │
-            │   (agent loop ×20)   │
-            └─────────┬────────────┘
-                      │ messages + tool schemas
-                      ▼
-            ┌──────────────────────┐
-            │   LLM via OpenRouter │
-            └─────────┬────────────┘
-          tool_calls? │
-         ┌────yes─────┴─────no─────┐
-         ▼                         ▼
-┌──────────────────┐        ┌───────────────┐
-│ call_function.py │        │ Final response│
-│ (dispatcher)     │        └───────────────┘
-└────────┬─────────┘
-         ▼
-┌──────────────────────────────┐
-│ functions/*  (sandboxed to   │
-│ ./calculator)                │
-└────────┬─────────────────────┘
-         │ tool result appended to messages
-         └──────────────▶ back to the LLM
+```mermaid
+flowchart TD
+    Prompt(["User prompt"]) --> Loop["main.py<br/>agent loop (max 20 iterations)"]
+    Loop -->|messages + tool schemas| LLM["LLM via OpenRouter"]
+    LLM --> Q{"Tool calls<br/>requested?"}
+    Q -->|no| Final(["Final response"])
+    Q -->|yes| Disp["call_function.py<br/>dispatcher injects working_directory"]
+    Disp --> Tools["functions/*<br/>get_files_info · get_file_content<br/>run_python_file · write_file"]
+    Tools --> Sandbox[("./calculator<br/>sandbox")]
+    Tools -->|tool result appended to messages| Loop
+```
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant A as Agent loop
+    participant M as LLM (OpenRouter)
+    participant T as Tools (sandboxed)
+
+    U->>A: "run the calculator tests"
+    A->>M: system prompt + user prompt + tool schemas
+    M-->>A: tool_call get_files_info(".")
+    A->>T: get_files_info(working_directory, ".")
+    T-->>A: file list
+    A->>M: tool result
+    M-->>A: tool_call run_python_file("tests.py")
+    A->>T: run in a subprocess (30 s timeout)
+    T-->>A: stdout + stderr
+    A->>M: tool result
+    M-->>A: final answer (no tool calls)
+    A-->>U: Final response
 ```
 
 1. The **system prompt** (`prompts.py`) tells the model what it can do and when to use each tool.
